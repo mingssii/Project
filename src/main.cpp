@@ -7,6 +7,7 @@
 #include "addons/RTDBHelper.h"
 #include <SoftwareSerial.h>
 #include <ArduinoJson.h> 
+#include <DHT.h>
 
 // UART
 #define MYPORT_TX 18
@@ -33,6 +34,8 @@ bool signupOK = false;
 #define BLYNK_PRINT Serial
 #include <BlynkSimpleEsp32.h>
 
+//DHT
+DHT dht(21, DHT11);
 
 // Soil Moisture Sensor
 #define SOIL_AO 32
@@ -55,47 +58,40 @@ void readFromUART() {
     while (arduinoPort.available()) {
         char c = arduinoPort.read();
         inputString += c;
-        Serial.print(c);
 
         // ตรวจจับข้อความจบด้วย '}'
         if (c == '}') {
             // ตัด '{' และ '}' ออก
             inputString.remove(0, 1); // ลบ '{'
+            while (inputString.length() > 4) {
+                if (inputString[0] < '0' || inputString[0] >'2') {
+                    inputString.remove(0, 1);
+                }
+                else {
+                    break;
+                }
+            }
             inputString.remove(inputString.length() - 1); // ลบ '}'
-
             // แยกข้อมูลด้วยเครื่องหมายจุลภาค
             int comma1 = inputString.indexOf(',');
-            int comma2 = inputString.indexOf(',', comma1 + 1);
-            int comma3 = inputString.indexOf(',', comma2 + 1);
 
-            if (comma1 != -1 && comma2 != -1 && comma3 != -1) {
+            if (comma1 != -1) {
                 // แยกค่า
-                String rainStatusStr = inputString.substring(0, comma1);
-                String liquidStatusStr = inputString.substring(comma1 + 1, comma2);
-                String humidityStr = inputString.substring(comma2 + 1, comma3);
-                String temperatureStr = inputString.substring(comma3 + 1);
 
+                String rainStatusStr = inputString.substring(0, comma1);
+                String liquidStatusStr = inputString.substring(comma1 + 1);
                 // แปลงเป็นตัวเลข
                 int rrainStatus = rainStatusStr.toInt();
                 int rliquidStatus = liquidStatusStr.toInt();
-                int rhumidity = humidityStr.toFloat();
-                int rtemperature = temperatureStr.toFloat();
 
                 // พิมพ์ค่าที่รับมาเพื่อตรวจสอบ
                 Serial.print("RainStatus from UART: ");
                 Serial.println(rrainStatus);
                 Serial.print("LiquidStatus from UART: ");
                 Serial.println(rliquidStatus);
-                Serial.print("Humidity from UART: ");
-                Serial.println(rhumidity);
-                Serial.print("Temperature from UART: ");
-                Serial.println(rtemperature);
-
                 // อัปเดตค่าที่รับมา
                 rainStatus = rrainStatus;
                 liquidStatus = rliquidStatus;
-                humidity = rhumidity;
-                temperature = rtemperature;
             }
             else {
                 Serial.println("Error: Invalid data format");
@@ -109,6 +105,7 @@ void readFromUART() {
 
 void setup() {
     Serial.begin(115200);
+    dht.begin();
     //UART
     arduinoPort.begin(9600, SWSERIAL_8N1, MYPORT_RX, MYPORT_TX, false);
     if (!arduinoPort) { // If the object did not initialize, then its configuration is invalid
@@ -172,6 +169,8 @@ void loop() {
     readFromUART();
     // Read sensor values
     int soilMoisture = analogRead(SOIL_AO);
+    float humidity = dht.readHumidity();
+    float temperature = dht.readTemperature();
 
     // Auto watering logic
     if (autoMode) {
@@ -185,7 +184,7 @@ void loop() {
     else {
         controlPump(pumpState);
     }
-    
+
 
     // Send to Firebase if values changed
     FirebaseJson json;
@@ -194,7 +193,6 @@ void loop() {
     json.set("rainStatus", rainStatus);
     json.set("liquidStatus", liquidStatus);
     json.set("soilMoisture", soilMoisture);
-    Serial.print(soilMoisture);
     if (Firebase.RTDB.setJSON(&fbdo, "/sensors", &json)) {
         Serial.println("Firebase update successful");
     }
@@ -220,5 +218,5 @@ void loop() {
     Blynk.virtualWrite(V6, liquidStatus);
     Blynk.virtualWrite(V7, soilMoisture);
 
-    delay(5000); // Update every 10 seconds
+    delay(3000); // Update every 10 seconds
 }
