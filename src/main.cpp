@@ -47,7 +47,7 @@ float temperature = -1;
 int soilMoisture = -1;
 int rainStatus = -1;
 int liquidStatus = -1;
-
+bool pumpState = false;
 
 //UART
 void readFromUART() {
@@ -151,14 +151,14 @@ void setup() {
 
 // Function to control the water pump
 void controlPump(bool state) {
-    digitalWrite(PUMP_PIN, state ? HIGH : LOW);
+    digitalWrite(PUMP_PIN, state ? LOW : HIGH);
     Serial.println(state ? "Pump ON" : "Pump OFF");
 }
 
 // Blynk Virtual Pin for manual control of the pump
 BLYNK_WRITE(V1) {
     int pumpControl = param.asInt();
-    controlPump(pumpControl);
+    pumpState = pumpControl;
 }
 
 // Blynk Virtual Pin for toggling automatic mode
@@ -174,11 +174,18 @@ void loop() {
     int soilMoisture = analogRead(SOIL_AO);
 
     // Auto watering logic
-    if (autoMode && soilMoisture < 500) {
-        controlPump(true);
-        delay(5000); // Watering duration
-        controlPump(false);
+    if (autoMode) {
+        if (soilMoisture < 500) {
+            controlPump(true);
+        }
+        else {
+            controlPump(false);
+        }
     }
+    else {
+        controlPump(pumpState);
+    }
+    
 
     // Send to Firebase if values changed
     FirebaseJson json;
