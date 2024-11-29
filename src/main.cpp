@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include <Adafruit_Sensor.h>
-#include <DHT.h>
 #include <WiFi.h>
 #include <WebServer.h>
 #include <Firebase_ESP_Client.h>
@@ -34,10 +33,6 @@ bool signupOK = false;
 #define BLYNK_PRINT Serial
 #include <BlynkSimpleEsp32.h>
 
-// DHT Sensor
-#define DHTPIN 21
-#define DHTTYPE DHT11
-DHT dht(DHTPIN, DHTTYPE);
 
 // Soil Moisture Sensor
 #define SOIL_AO 32
@@ -60,29 +55,54 @@ void readFromUART() {
     while (arduinoPort.available()) {
         char c = arduinoPort.read();
         inputString += c;
+        Serial.print(c);
 
-        // ตรวจจับ JSON ข้อมูล (ถ้าจบด้วย "}")
+        // ตรวจจับข้อความจบด้วย '}'
         if (c == '}') {
-            // แปลงข้อมูลเป็น JSON
-            StaticJsonDocument<200> doc;
-            DeserializationError error = deserializeJson(doc, inputString);
-            if (!error) {
-                // ดึงค่าจาก JSON
-                int rrainStatus = doc["rainStatus"];
-                int rliquidStatus = doc["liquidStatus"];
-                // พิมพ์ค่าที่รับมาเพื่อเช็ค
+            // ตัด '{' และ '}' ออก
+            inputString.remove(0, 1); // ลบ '{'
+            inputString.remove(inputString.length() - 1); // ลบ '}'
+
+            // แยกข้อมูลด้วยเครื่องหมายจุลภาค
+            int comma1 = inputString.indexOf(',');
+            int comma2 = inputString.indexOf(',', comma1 + 1);
+            int comma3 = inputString.indexOf(',', comma2 + 1);
+
+            if (comma1 != -1 && comma2 != -1 && comma3 != -1) {
+                // แยกค่า
+                String rainStatusStr = inputString.substring(0, comma1);
+                String liquidStatusStr = inputString.substring(comma1 + 1, comma2);
+                String humidityStr = inputString.substring(comma2 + 1, comma3);
+                String temperatureStr = inputString.substring(comma3 + 1);
+
+                // แปลงเป็นตัวเลข
+                int rrainStatus = rainStatusStr.toInt();
+                int rliquidStatus = liquidStatusStr.toInt();
+                int rhumidity = humidityStr.toFloat();
+                int rtemperature = temperatureStr.toFloat();
+
+                // พิมพ์ค่าที่รับมาเพื่อตรวจสอบ
                 Serial.print("RainStatus from UART: ");
                 Serial.println(rrainStatus);
                 Serial.print("LiquidStatus from UART: ");
                 Serial.println(rliquidStatus);
-                // ใช้ค่าที่รับมา
+                Serial.print("Humidity from UART: ");
+                Serial.println(rhumidity);
+                Serial.print("Temperature from UART: ");
+                Serial.println(rtemperature);
+
+                // อัปเดตค่าที่รับมา
                 rainStatus = rrainStatus;
                 liquidStatus = rliquidStatus;
+                humidity = rhumidity;
+                temperature = rtemperature;
             }
             else {
-                Serial.println("Failed to parse JSON from UART");
+                Serial.println("Error: Invalid data format");
             }
-            inputString = ""; // ล้างข้อความหลังแปลงเสร็จ
+
+            // ล้างข้อมูลที่อ่าน
+            inputString = "";
         }
     }
 }
@@ -90,7 +110,7 @@ void readFromUART() {
 void setup() {
     Serial.begin(115200);
     //UART
-    arduinoPort.begin(115200, SWSERIAL_8N1, MYPORT_RX, MYPORT_TX, false);
+    arduinoPort.begin(9600, SWSERIAL_8N1, MYPORT_RX, MYPORT_TX, false);
     if (!arduinoPort) { // If the object did not initialize, then its configuration is invalid
         Serial.println("Invalid EspSoftwareSerial pin configuration, check config");
         while (1) { // Don't continue with invalid configuration
@@ -98,7 +118,6 @@ void setup() {
         }
     }
     // Initialize sensors
-    dht.begin();
     pinMode(PUMP_PIN, OUTPUT);
     digitalWrite(PUMP_PIN, LOW); // Turn off pump initially
 
@@ -152,8 +171,6 @@ void loop() {
     Blynk.run();
     readFromUART();
     // Read sensor values
-    float humidity = dht.readHumidity();
-    float temperature = dht.readTemperature();
     int soilMoisture = analogRead(SOIL_AO);
 
     // Auto watering logic
@@ -183,6 +200,11 @@ void loop() {
         Serial.println(rainStatus);
         Serial.println(liquidStatus);
     }
+    Serial.println(humidity);
+    Serial.println(temperature);
+    Serial.println(soilMoisture);
+    Serial.println(rainStatus);
+    Serial.println(liquidStatus);
 
     // Send sensor data to Blynk
     Blynk.virtualWrite(V3, humidity);
