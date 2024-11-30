@@ -16,8 +16,8 @@ EspSoftwareSerial::UART arduinoPort;
 
 
 // WiFi
-const char* ssid = "Mix";
-const char* password = "wifi1234";
+const char* ssid = "ssii";
+const char* password = "ming123459sa";
 
 // Firebase
 #define API_KEY "AIzaSyDxjY-g-_C4hG0mi5uqpr8uWqn1SaY6j2E"
@@ -174,7 +174,12 @@ void loop() {
 
     // Auto watering logic
     if (autoMode) {
-        if (soilMoisture < 500) {
+        if (temperature > 0 && humidity > 0) { // ตรวจสอบว่าไม่เป็น NaN
+            if (liquidStatus == 1 && soilMoisture < 500 && temperature > 5 && humidity < 70 && rainStatus > 0) {
+                controlPump(true);
+            }
+        }
+        else if (liquidStatus == 1 && soilMoisture < 500 && rainStatus > 0) {
             controlPump(true);
         }
         else {
