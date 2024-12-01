@@ -16,8 +16,8 @@ EspSoftwareSerial::UART arduinoPort;
 
 
 // WiFi
-const char* ssid = "Mix";
-const char* password = "wifi1234";
+const char* ssid = "ssii";
+const char* password = "ming123459sa";
 
 // Firebase
 #define API_KEY "AIzaSyDxjY-g-_C4hG0mi5uqpr8uWqn1SaY6j2E"
@@ -51,7 +51,9 @@ int soilMoisture = -1;
 int rainStatus = -1;
 int liquidStatus = -1;
 bool pumpState = false;
-
+int soilMoistureCheck = 500;
+int h_error = 0;
+int f_error = 0;
 //UART
 void readFromUART() {
     static String inputString = "";
@@ -90,6 +92,13 @@ void readFromUART() {
                 Serial.print("LiquidStatus from UART: ");
                 Serial.println(rliquidStatus);
                 // อัปเดตค่าที่รับมา
+                if (rainStatus >= 2 && rrainStatus <= 1) {
+                    Blynk.logEvent("rain", "OMG It's Raining");
+                }
+                if (liquidStatus == 1 && rliquidStatus == 0) {
+                    Blynk.logEvent("liquid", "OMG It's out of water");
+                    Serial.println("liquid error");
+                }
                 rainStatus = rrainStatus;
                 liquidStatus = rliquidStatus;
             }
@@ -116,7 +125,7 @@ void setup() {
     }
     // Initialize sensors
     pinMode(PUMP_PIN, OUTPUT);
-    digitalWrite(PUMP_PIN, LOW); // Turn off pump initially
+    digitalWrite(PUMP_PIN, HIGH); // Turn off pump initially
 
     // Connect to WiFi
     WiFi.mode(WIFI_STA);
@@ -169,12 +178,22 @@ void loop() {
     readFromUART();
     // Read sensor values
     int soilMoisture = analogRead(SOIL_AO);
-    float humidity = dht.readHumidity();
-    float temperature = dht.readTemperature();
-
+    float nhumidity = dht.readHumidity();
+    float ntemperature = dht.readTemperature();
+    if (!isnan(nhumidity) && !isnan(ntemperature)) {
+        humidity = nhumidity;
+        temperature = ntemperature;
+    }
+    else {
+        h_error += 1;
+        if (h_error >= 20) {
+            Blynk.logEvent("humidity", "sensor humidity need to be checked");
+            h_error = 0;
+        }
+    }
     // Auto watering logic
     if (autoMode) {
-        if (soilMoisture < 500) {
+        if (liquidStatus == 1 && soilMoisture < soilMoistureCheck && temperature > 5 && humidity < 70 && rainStatus > 0) {
             controlPump(true);
         }
         else {
@@ -197,7 +216,12 @@ void loop() {
         Serial.println("Firebase update successful");
     }
     else {
+        f_error += 1;
         Serial.print("Firebase update failed: ");
+        if (f_error > 20) {
+            Blynk.logEvent("firebase", "Some sensor might error");
+            f_error = 0;
+        }
         Serial.println(fbdo.errorReason());
         Serial.println(humidity);
         Serial.println(temperature);
