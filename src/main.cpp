@@ -125,7 +125,7 @@ void setup() {
     }
     // Initialize sensors
     pinMode(PUMP_PIN, OUTPUT);
-    digitalWrite(PUMP_PIN, LOW); // Turn off pump initially
+    digitalWrite(PUMP_PIN, HIGH); // Turn off pump initially
 
     // Connect to WiFi
     WiFi.mode(WIFI_STA);
