@@ -51,7 +51,9 @@ int soilMoisture = -1;
 int rainStatus = -1;
 int liquidStatus = -1;
 bool pumpState = false;
-
+int soilMoistureCheck = 500;
+int h_error = 0;
+int f_error = 0;
 //UART
 void readFromUART() {
     static String inputString = "";
@@ -90,6 +92,13 @@ void readFromUART() {
                 Serial.print("LiquidStatus from UART: ");
                 Serial.println(rliquidStatus);
                 // อัปเดตค่าที่รับมา
+                if (rainStatus >= 2 && rrainStatus <= 1) {
+                    Blynk.logEvent("rain", "OMG It's Raining");
+                }
+                if (liquidStatus == 1 && rliquidStatus == 0) {
+                    Blynk.logEvent("liquid", "OMG It's out of water");
+                    Serial.println("liquid error");
+                }
                 rainStatus = rrainStatus;
                 liquidStatus = rliquidStatus;
             }
@@ -169,17 +178,22 @@ void loop() {
     readFromUART();
     // Read sensor values
     int soilMoisture = analogRead(SOIL_AO);
-    float humidity = dht.readHumidity();
-    float temperature = dht.readTemperature();
-
+    float nhumidity = dht.readHumidity();
+    float ntemperature = dht.readTemperature();
+    if (!isnan(nhumidity) && !isnan(ntemperature)) {
+        humidity = nhumidity;
+        temperature = ntemperature;
+    }
+    else {
+        h_error += 1;
+        if (h_error >= 20) {
+            Blynk.logEvent("humidity", "sensor humidity need to be checked");
+            h_error = 0;
+        }
+    }
     // Auto watering logic
     if (autoMode) {
-        if (temperature > 0 && humidity > 0) { // ตรวจสอบว่าไม่เป็น NaN
-            if (liquidStatus == 1 && soilMoisture < 500 && temperature > 5 && humidity < 70 && rainStatus > 0) {
-                controlPump(true);
-            }
-        }
-        else if (liquidStatus == 1 && soilMoisture < 500 && rainStatus > 0) {
+        if (liquidStatus == 1 && soilMoisture < soilMoistureCheck && temperature > 5 && humidity < 70 && rainStatus > 0) {
             controlPump(true);
         }
         else {
@@ -202,7 +216,12 @@ void loop() {
         Serial.println("Firebase update successful");
     }
     else {
+        f_error += 1;
         Serial.print("Firebase update failed: ");
+        if (f_error > 20) {
+            Blynk.logEvent("firebase", "Some sensor might error");
+            f_error = 0;
+        }
         Serial.println(fbdo.errorReason());
         Serial.println(humidity);
         Serial.println(temperature);
